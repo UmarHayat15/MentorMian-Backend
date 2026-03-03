@@ -12,12 +12,14 @@ class LlmProviderFactory(private val appConfig: AppConfig) {
                     ?: throw IllegalArgumentException("API key required for OpenAI provider")
                 OpenAiProvider(
                     apiKey = apiKey,
-                    baseUrl = llmConfig.baseUrl ?: "https://api.openai.com/v1"
+                    baseUrl = llmConfig.baseUrl ?: appConfig.openai.baseUrl,
+                    embeddingModel = appConfig.openai.embedModel
                 )
             }
             "ollama" -> {
                 OllamaProvider(
-                    baseUrl = llmConfig.baseUrl ?: appConfig.ollamaBaseUrl
+                    baseUrl = llmConfig.baseUrl ?: appConfig.ollama.baseUrl,
+                    embeddingModel = appConfig.ollama.embedModel
                 )
             }
             "custom" -> {
@@ -25,7 +27,11 @@ class LlmProviderFactory(private val appConfig: AppConfig) {
                     ?: throw IllegalArgumentException("API key required for custom provider")
                 val baseUrl = llmConfig.baseUrl
                     ?: throw IllegalArgumentException("Base URL required for custom provider")
-                CustomProvider(apiKey = apiKey, baseUrl = baseUrl)
+                CustomProvider(
+                    apiKey = apiKey,
+                    baseUrl = baseUrl,
+                    embeddingModel = appConfig.openai.embedModel
+                )
             }
             else -> throw IllegalArgumentException("Unknown provider: ${llmConfig.provider}")
         }

@@ -2,6 +2,7 @@ package com.aitutor.llm.provider
 
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
+import io.ktor.client.plugins.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
@@ -14,7 +15,8 @@ import kotlinx.serialization.json.*
 import org.slf4j.LoggerFactory
 
 class OllamaProvider(
-    private val baseUrl: String = "http://localhost:11434"
+    private val baseUrl: String = "http://localhost:11434",
+    private val embeddingModel: String = "nomic-embed-text"
 ) : LlmProvider {
 
     override val providerName = "ollama"
@@ -23,6 +25,11 @@ class OllamaProvider(
     private val json = Json { ignoreUnknownKeys = true }
 
     private val client = HttpClient(CIO) {
+        install(HttpTimeout) {
+            // Streaming responses can run for a long time.
+            requestTimeoutMillis = HttpTimeout.INFINITE_TIMEOUT_MS
+            socketTimeoutMillis = HttpTimeout.INFINITE_TIMEOUT_MS
+        }
         install(ContentNegotiation) {
             json(json)
         }
@@ -49,6 +56,11 @@ class OllamaProvider(
             setBody(requestBody.toString())
         }
 
+        if (!response.status.isSuccess()) {
+            val body = response.bodyAsText()
+            throw IllegalArgumentException("Ollama chat failed (${response.status.value}): $body")
+        }
+
         val channel: ByteReadChannel = response.bodyAsChannel()
 
         while (!channel.isClosedForRead) {
@@ -57,14 +69,20 @@ class OllamaProvider(
 
             try {
                 val jsonObj = json.parseToJsonElement(line).jsonObject
+                val error = jsonObj["error"]?.jsonPrimitive?.contentOrNull
+                if (error != null) {
+                    throw IllegalArgumentException("Ollama chat error: $error")
+                }
                 val content = jsonObj["message"]?.jsonObject?.get("content")?.jsonPrimitive?.contentOrNull
                 if (content != null) {
                     emit(content)
                 }
                 val done = jsonObj["done"]?.jsonPrimitive?.booleanOrNull ?: false
                 if (done) break
+            } catch (e: IllegalArgumentException) {
+                throw e
             } catch (e: Exception) {
-                logger.debug("Skipping Ollama line: $line")
+                logger.warn("Failed to parse Ollama chat stream line: $line", e)
             }
         }
     }
@@ -98,7 +116,7 @@ class OllamaProvider(
 
     override suspend fun embed(text: String): List<Float> {
         val requestBody = buildJsonObject {
-            put("model", "nomic-embed-text")
+            put("model", embeddingModel)
             put("prompt", text)
         }
 

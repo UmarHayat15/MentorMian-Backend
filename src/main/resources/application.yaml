@@ -19,6 +19,23 @@ aitutor:
     directory: "uploads"
   ollama:
     baseUrl: "http://localhost:11434"
+    embedModel: "nomic-embed-text"
+  openai:
+    baseUrl: "https://api.openai.com/v1"
+    embedModel: "text-embedding-3-small"
+  defaults:
+    provider: "openai"
+    model: "gpt-4o"
   chunking:
     maxTokens: 512
     overlapPercent: 15
+  rag:
+    topK: 10
+    maxContextTokens: 3000
+  chat:
+    maxHistory: 10
+    snippetLength: 200
+    titleLength: 100
+  app:
+    version: "0.1.0"
+    corsAllowedOrigins: "*"

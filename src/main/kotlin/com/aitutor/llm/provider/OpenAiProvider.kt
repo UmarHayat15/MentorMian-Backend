@@ -15,7 +15,8 @@ import org.slf4j.LoggerFactory
 
 class OpenAiProvider(
     private val apiKey: String,
-    private val baseUrl: String = "https://api.openai.com/v1"
+    private val baseUrl: String = "https://api.openai.com/v1",
+    private val embeddingModel: String = "text-embedding-3-small"
 ) : LlmProvider {
 
     override val providerName = "openai"
@@ -109,7 +110,7 @@ class OpenAiProvider(
 
     override suspend fun embed(text: String): List<Float> {
         val requestBody = buildJsonObject {
-            put("model", "text-embedding-3-small")
+            put("model", embeddingModel)
             put("input", text)
         }
 
@@ -130,7 +131,7 @@ class OpenAiProvider(
 
     override suspend fun embedBatch(texts: List<String>): List<List<Float>> {
         val requestBody = buildJsonObject {
-            put("model", "text-embedding-3-small")
+            put("model", embeddingModel)
             put("input", buildJsonArray { texts.forEach { add(it) } })
         }
 

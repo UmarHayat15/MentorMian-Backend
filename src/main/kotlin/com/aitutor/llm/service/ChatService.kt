@@ -2,6 +2,7 @@ package com.aitutor.llm.service
 
 import com.aitutor.api.dto.ChatSource
 import com.aitutor.api.middleware.LlmConfig
+import com.aitutor.common.config.AppConfig
 import com.aitutor.common.model.ConversationTable
 import com.aitutor.common.model.MessageTable
 import com.aitutor.common.util.dbQuery
@@ -15,6 +16,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.selectAll
 import org.slf4j.LoggerFactory
@@ -22,7 +24,8 @@ import java.util.UUID
 
 class ChatService(
     private val providerFactory: LlmProviderFactory,
-    private val retrievalService: RetrievalService
+    private val retrievalService: RetrievalService,
+    private val appConfig: AppConfig
 ) {
     private val logger = LoggerFactory.getLogger(ChatService::class.java)
     private val json = Json { encodeDefaults = true }
@@ -49,7 +52,7 @@ class ChatService(
                 chunkId = chunk.chunkId.toString(),
                 documentTitle = chunk.chapter,
                 pageNumber = chunk.pageNumber,
-                snippet = chunk.content.take(200)
+                snippet = chunk.content.take(appConfig.chat.snippetLength)
             )
         }
 
@@ -77,7 +80,7 @@ class ChatService(
     ): List<ChatMessage> {
         val messages = mutableListOf<ChatMessage>()
         messages.add(ChatMessage(role = "system", content = SystemPrompts.TUTOR_SYSTEM_PROMPT))
-        messages.addAll(history.takeLast(10))
+        messages.addAll(history.takeLast(appConfig.chat.maxHistory))
         messages.add(
             ChatMessage(
                 role = "user",
@@ -88,7 +91,7 @@ class ChatService(
     }
 
     private suspend fun createConversation(firstMessage: String): UUID = dbQuery {
-        val title = firstMessage.take(100)
+        val title = firstMessage.take(appConfig.chat.titleLength)
         val row = ConversationTable.insert {
             it[ConversationTable.title] = title
         }.resultedValues!!.first()
@@ -108,11 +111,12 @@ class ChatService(
     }
 
     private suspend fun saveMessage(conversationId: UUID, role: String, content: String, sources: String?) = dbQuery {
+        val sourcesJson: JsonElement? = sources?.let { json.parseToJsonElement(it) }
         MessageTable.insert {
             it[MessageTable.conversationId] = conversationId
             it[MessageTable.role] = role
             it[MessageTable.content] = content
-            it[MessageTable.sources] = sources
+            it[MessageTable.sources] = sourcesJson
         }
     }
 }

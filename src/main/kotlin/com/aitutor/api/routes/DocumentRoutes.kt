@@ -78,7 +78,7 @@ fun Route.documentRoutes(
                     val extracted = pdfExtractionService.extract(file)
                     val chunks = chunkingService.chunk(extracted.text)
 
-                    val llmConfig = call.extractLlmConfig()
+                    val llmConfig = call.extractLlmConfig(appConfig.defaults)
                     val provider = providerFactory.create(llmConfig)
 
                     val docId = doc.id.toUUID()

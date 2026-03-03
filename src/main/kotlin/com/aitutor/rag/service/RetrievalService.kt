@@ -1,5 +1,6 @@
 package com.aitutor.rag.service
 
+import com.aitutor.common.config.AppConfig
 import com.aitutor.ingestion.service.EmbeddingProvider
 import com.aitutor.rag.repository.SimilarChunk
 import com.aitutor.rag.repository.VectorRepository
@@ -8,14 +9,15 @@ import java.util.UUID
 
 class RetrievalService(
     private val vectorRepository: VectorRepository,
-    private val contextAssembler: ContextAssembler
+    private val contextAssembler: ContextAssembler,
+    private val appConfig: AppConfig
 ) {
     private val logger = LoggerFactory.getLogger(RetrievalService::class.java)
 
     suspend fun retrieve(
         query: String,
         embeddingProvider: EmbeddingProvider,
-        topK: Int = 10,
+        topK: Int = appConfig.rag.topK,
         documentIds: List<UUID>? = null
     ): RetrievalResult {
         val queryEmbedding = embeddingProvider.embed(query)

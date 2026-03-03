@@ -1,10 +1,11 @@
 package com.aitutor.rag.service
 
+import com.aitutor.common.config.AppConfig
 import com.aitutor.rag.repository.SimilarChunk
 
-class ContextAssembler {
+class ContextAssembler(private val appConfig: AppConfig) {
 
-    fun assemble(chunks: List<SimilarChunk>, maxTokens: Int = 3000): String {
+    fun assemble(chunks: List<SimilarChunk>, maxTokens: Int = appConfig.rag.maxContextTokens): String {
         val builder = StringBuilder()
         var estimatedTokens = 0
 

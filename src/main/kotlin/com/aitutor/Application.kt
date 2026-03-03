@@ -38,7 +38,7 @@ fun Application.module() {
     logger.info("Database initialized")
 
     configureSerialization()
-    configureCors()
+    configureCors(appConfig)
     configureErrorHandling()
     configureHeaders()
 
@@ -50,10 +50,10 @@ fun Application.module() {
     val pdfExtractionService = PdfExtractionService()
     val chunkingService = ChunkingService(appConfig)
     val embeddingService = EmbeddingService()
-    val contextAssembler = ContextAssembler()
-    val retrievalService = RetrievalService(vectorRepository, contextAssembler)
+    val contextAssembler = ContextAssembler(appConfig)
+    val retrievalService = RetrievalService(vectorRepository, contextAssembler, appConfig)
     val providerFactory = LlmProviderFactory(appConfig)
-    val chatService = ChatService(providerFactory, retrievalService)
+    val chatService = ChatService(providerFactory, retrievalService, appConfig)
 
     configureRouting(
         appConfig = appConfig,
@@ -80,7 +80,7 @@ fun Application.configureSerialization() {
     }
 }
 
-fun Application.configureCors() {
+fun Application.configureCors(appConfig: AppConfig) {
     install(CORS) {
         allowMethod(HttpMethod.Options)
         allowMethod(HttpMethod.Get)
@@ -93,7 +93,16 @@ fun Application.configureCors() {
         allowHeader("X-API-Key")
         allowHeader("X-Model")
         allowHeader("X-Base-URL")
-        anyHost()
+
+        val origins = appConfig.appMeta.corsAllowedOrigins
+        if (origins == "*") {
+            anyHost()
+        } else {
+            origins.split(",").map { it.trim() }.filter { it.isNotEmpty() }.forEach { origin ->
+                allowHost(origin.removePrefix("https://").removePrefix("http://"),
+                    schemes = listOf("http", "https"))
+            }
+        }
     }
 }
 
@@ -116,7 +125,7 @@ fun Application.configureRouting(
 ) {
     routing {
         route("/api/v1") {
-            healthRoutes()
+            healthRoutes(appConfig)
             documentRoutes(
                 appConfig = appConfig,
                 documentRepository = documentRepository,
@@ -127,7 +136,7 @@ fun Application.configureRouting(
                 vectorRepository = vectorRepository,
                 providerFactory = providerFactory
             )
-            chatRoutes(chatService)
+            chatRoutes(appConfig, chatService)
             conversationRoutes()
             modelRoutes()
         }

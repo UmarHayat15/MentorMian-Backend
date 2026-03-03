@@ -46,7 +46,7 @@ fun Route.conversationRoutes() {
                             id = row[MessageTable.id].toString(),
                             role = row[MessageTable.role],
                             content = row[MessageTable.content],
-                            sources = row[MessageTable.sources],
+                            sources = row[MessageTable.sources]?.toString(),
                             createdAt = row[MessageTable.createdAt].toString()
                         )
                     }

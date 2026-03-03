@@ -5,29 +5,29 @@ services:
     image: pgvector/pgvector:pg16
     container_name: aitutor-postgres
     environment:
-      POSTGRES_DB: aitutor
-      POSTGRES_USER: aitutor
-      POSTGRES_PASSWORD: aitutor_secret
+      POSTGRES_DB: ${AITUTOR_DB_NAME:-aitutor}
+      POSTGRES_USER: ${AITUTOR_DB_USER:-aitutor}
+      POSTGRES_PASSWORD: ${AITUTOR_DB_PASSWORD:-aitutor_secret}
     ports:
-      - "5432:5432"
+      - "${AITUTOR_DB_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U aitutor"]
+      test: ["CMD-SHELL", "pg_isready -U ${AITUTOR_DB_USER:-aitutor}"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  ollama:
-    image: ollama/ollama:latest
-    container_name: aitutor-ollama
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-    profiles:
-      - ollama
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   container_name: aitutor-ollama
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ollama_data:/root/.ollama
+  #   profiles:
+  #     - ollama
 
 volumes:
   pgdata:
-  ollama_data:
+  # ollama_data:

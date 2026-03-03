@@ -18,6 +18,17 @@ Kotlin + Ktor backend for the AI Tutor application. Provides RAG-powered tutorin
 
 ## Quick Start
 
+### 0. Configure `.env`
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` as needed. Runtime config loading priority is:
+1. OS environment variables
+2. `.env` file
+3. `application.yaml`
+
 ### 1. Start the database
 
 ```bash
