@@ -55,6 +55,35 @@ The server starts at `http://localhost:8080`.
 curl http://localhost:8080/api/v1/health
 ```
 
+## Publish To GitHub Packages
+
+This repo is configured to publish:
+- Maven package to GitHub Packages
+- Docker image to GitHub Container Registry (`ghcr.io`)
+
+Publishing happens automatically via `/.github/workflows/publish.yml` on `push` to `main/master` and tags `v*`.
+
+### Maven package
+
+Coordinates:
+- Group: `com.aitutor`
+- Artifact: `ai-tutor-backend`
+- Version:
+  - From tag `vX.Y.Z` => `X.Y.Z`
+  - Branch push => `0.1.0-SNAPSHOT.<run_number>`
+
+### Docker image
+
+Image is pushed to:
+- `ghcr.io/<owner>/<repo>`
+
+Recommended release flow:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
 ## API Endpoints
 
 | Method | Endpoint | Description |

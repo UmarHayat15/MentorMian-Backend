@@ -13,10 +13,11 @@ plugins {
     kotlin("jvm") version "2.0.21"
     id("io.ktor.plugin") version "2.3.12"
     id("org.jetbrains.kotlin.plugin.serialization") version "2.0.21"
+    `maven-publish`
 }
 
 group = "com.aitutor"
-version = "0.1.0"
+version = (project.findProperty("packageVersion") as String?) ?: "0.1.0-SNAPSHOT"
 
 application {
     mainClass.set("com.aitutor.ApplicationKt")
@@ -78,4 +79,29 @@ dependencies {
     // Testing
     testImplementation("io.ktor:ktor-server-tests-jvm:$ktor_version")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:$kotlin_version")
+}
+
+publishing {
+    val githubRepository = System.getenv("GITHUB_REPOSITORY")
+        ?: project.findProperty("gpr.repoPath") as String?
+        ?: "UmarHayat15/MentorMian-Backend"
+
+    repositories {
+        maven {
+            name = "GitHubPackages"
+            url = uri("https://maven.pkg.github.com/$githubRepository")
+            credentials {
+                username = System.getenv("GITHUB_ACTOR") ?: project.findProperty("gpr.user") as String? ?: ""
+                password = System.getenv("GITHUB_TOKEN") ?: project.findProperty("gpr.key") as String? ?: ""
+            }
+        }
+    }
+    publications {
+        create<MavenPublication>("gpr") {
+            from(components["java"])
+            groupId = project.group.toString()
+            artifactId = rootProject.name
+            version = project.version.toString()
+        }
+    }
 }
