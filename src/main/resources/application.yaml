@@ -1,0 +1,24 @@
+ktor:
+  application:
+    modules:
+      - com.aitutor.ApplicationKt.module
+  deployment:
+    port: 8080
+    watch:
+      - classes
+      - resources
+
+aitutor:
+  database:
+    url: "jdbc:postgresql://localhost:5432/aitutor"
+    user: "aitutor"
+    password: "aitutor_secret"
+    driver: "org.postgresql.Driver"
+    maxPoolSize: 10
+  uploads:
+    directory: "uploads"
+  ollama:
+    baseUrl: "http://localhost:11434"
+  chunking:
+    maxTokens: 512
+    overlapPercent: 15

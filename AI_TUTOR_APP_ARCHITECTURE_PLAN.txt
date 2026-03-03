@@ -1,0 +1,536 @@
+================================================================================
+              AI TUTOR APP — ARCHITECTURE & DEVELOPMENT PLAN
+================================================================================
+
+Created: 2025
+Project: AITutorApp
+Author: Planning Document
+
+================================================================================
+1. PROJECT OVERVIEW
+================================================================================
+
+An AI-powered Tutor application that:
+  - Ingests PDF textbooks and builds a searchable knowledge base (RAG)
+  - Users ask questions and get intelligent, contextual answers from the books
+  - Auto-detects user's language (English, Urdu, Roman Urdu) and responds
+    in the same language
+  - Supports BYOK (Bring Your Own API Key) for commercial LLMs
+  - Also supports open-source/self-hosted LLMs (Ollama, vLLM)
+
+Target Platforms:
+  - Mobile App (Android — Kotlin) → FIRST PRIORITY
+  - Web App (TypeScript + React) → LATER
+  - Backend API (Kotlin) → Serves both clients
+
+================================================================================
+2. KEY ARCHITECTURE DECISIONS
+================================================================================
+
+2.1 MICROSERVICES vs MONOLITH?
+-------------------------------
+Decision: MODULAR MONOLITH (single deployable, clean internal modules)
+
+Reasoning:
+  - Starting fresh with likely small team — microservices add massive overhead
+  - No need for independent scaling of individual services yet
+  - Clean module boundaries allow future extraction to microservices
+  - One deployment, one database, simpler DevOps
+
+2.2 BACKEND LANGUAGE: KOTLIN
+------------------------------
+Decision: Kotlin + Ktor (or Spring Boot)
+
+Reasoning:
+  - Team already knows Kotlin for mobile — single language expertise
+  - JVM has the BEST PDF processing libraries (Apache Tika, PDFBox)
+  - JVM has excellent LLM client libraries
+  - When web app comes later, React just calls the same REST API
+  - Backend language does NOT need to match frontend language
+
+2.3 RAG PIPELINE: ON THE BACKEND (not on mobile)
+--------------------------------------------------
+Decision: All RAG processing happens on the backend
+
+Reasoning:
+  - Mobile devices can't run embeddings or vector search efficiently
+  - PDF processing (OCR especially) is resource-intensive
+  - Centralized vector DB serves BOTH mobile and web clients
+  - Single source of truth for all ingested knowledge
+
+2.4 LLM APPROACH: BYOK + OPEN SOURCE SUPPORT
+----------------------------------------------
+Decision: Abstraction layer supporting multiple providers
+
+The backend acts as a PASS-THROUGH PROXY:
+  - Client sends API key + provider info in request headers (over HTTPS)
+  - Backend uses that key to call the chosen LLM provider
+  - Keys are NOT stored on the server (zero-trust) — stored encrypted on device
+  - For open-source models (Ollama): no key needed, backend routes to local instance
+
+LLM Abstraction Layer Design:
+  ```
+  interface LlmProvider {
+      suspend fun chat(messages, config): Flow<String>   // streaming
+      suspend fun embed(text): List<Float>
+  }
+
+  // Implementations:
+  OpenAiProvider(apiKey, model)      // GPT-4o, GPT-4-mini
+  OllamaProvider(baseUrl, model)     // Llama 3, Mistral, Qwen
+  CustomProvider(baseUrl, apiKey)     // Any OpenAI-compatible API (Groq, Together, etc.)
+  ```
+
+2.5 LANGUAGE DETECTION: LET THE LLM HANDLE IT
+-----------------------------------------------
+Decision: No separate language detection service
+
+Reasoning:
+  - Modern LLMs are excellent at detecting and responding in the user's language
+  - Code-mixed Roman Urdu/English is hard for rule-based detectors
+  - System prompt approach is simpler and more accurate:
+
+  System Prompt:
+  "You are an AI Tutor. Detect the language of the user's message
+   (English, Urdu, or Roman Urdu) and ALWAYS respond in the same
+   language. If the user mixes languages, follow their dominant
+   language. Maintain consistency throughout the conversation."
+
+================================================================================
+3. TECH STACK
+================================================================================
+
+BACKEND:
+  - Language:       Kotlin
+  - Framework:      Ktor (lightweight, coroutine-native) OR Spring Boot 3.x
+  - Build:          Gradle (Kotlin DSL)
+  - Database:       PostgreSQL + pgvector extension
+  - Migrations:     Flyway
+  - PDF Extract:    Apache Tika (wraps PDFBox) + Tesseract OCR (fallback)
+  - Embeddings:     OpenAI text-embedding-3-small (default) + Ollama alternatives
+  - LLM:            BYOK — OpenAI, Ollama, any OpenAI-compatible endpoint
+  - API Format:     REST + SSE (Server-Sent Events for streaming)
+  - Auth:           JWT tokens + BYOK key pass-through
+  - Docs:           OpenAPI/Swagger
+
+MOBILE APP (Android):
+  - Language:       Kotlin
+  - UI:             Jetpack Compose + Material 3
+  - HTTP Client:    Retrofit + OkHttp (SSE streaming support)
+  - Local Storage:  Room (conversation history, settings)
+  - DI:             Hilt (Dagger)
+  - Key Storage:    EncryptedSharedPreferences (for BYOK API keys)
+  - Architecture:   MVVM (ViewModel → Repository → API)
+  - State:          Kotlin Flow + StateFlow
+
+WEB APP (Later):
+  - Language:       TypeScript
+  - Framework:      React + Vite
+  - UI:             Tailwind CSS or Shadcn/UI
+  - State:          React Query + Zustand
+  - API:            Same backend REST + SSE endpoints
+
+================================================================================
+4. DEVELOPMENT ORDER & PHASED PLAN
+================================================================================
+
+  ┌─────────────────────────────────────────────────────────────────┐
+  │  Phase 1: Backend Core API          (Weeks 1-4)                │
+  │  Phase 2: Android Mobile App        (Weeks 3-6, overlapping)   │
+  │  Phase 3: Web App                   (Weeks 7-10)               │
+  │  Phase 4: Advanced Features         (Weeks 10+)                │
+  └─────────────────────────────────────────────────────────────────┘
+
+WHY BACKEND FIRST?
+  - Both mobile and web clients DEPEND on the backend API
+  - RAG pipeline, PDF processing, LLM calls all live on the backend
+  - You can test the entire pipeline via Swagger/Postman before building UI
+  - Mobile development can start overlapping once core APIs are ready
+
+----------------------------------------------------------------------
+PHASE 1 — BACKEND CORE (Weeks 1-4)
+----------------------------------------------------------------------
+
+Week 1: Project Setup & Database
+  [ ] Kotlin + Ktor/Spring Boot project scaffold with Gradle
+  [ ] PostgreSQL setup + pgvector extension
+  [ ] Flyway migrations (users, documents, chunks, conversations tables)
+  [ ] Basic health check endpoint
+  [ ] Docker Compose for local development (Postgres + pgvector)
+
+Week 2: PDF Ingestion Pipeline
+  [ ] Apache Tika integration for PDF text extraction
+  [ ] Tesseract OCR fallback for scanned PDFs
+  [ ] Chunking service (semantic chunking, ~512 tokens, 15% overlap)
+  [ ] Metadata extraction (title, chapter, page numbers)
+  [ ] Document upload REST endpoint (multipart file upload)
+
+Week 3: Embeddings & Vector Storage
+  [ ] Embedding service abstraction (interface)
+  [ ] OpenAI text-embedding-3-small implementation
+  [ ] Ollama embedding implementation (for open-source models)
+  [ ] pgvector storage and similarity search
+  [ ] RAG retrieval service (top-K search + context assembly)
+
+Week 4: LLM Chat & Streaming
+  [ ] LLM provider abstraction (interface)
+  [ ] OpenAI GPT-4o provider implementation
+  [ ] Ollama provider implementation
+  [ ] Custom OpenAI-compatible provider implementation
+  [ ] BYOK key handling (pass-through from request headers)
+  [ ] Chat endpoint with SSE streaming
+  [ ] Conversation history management
+  [ ] System prompt with language detection instructions
+  [ ] OpenAPI/Swagger documentation
+
+----------------------------------------------------------------------
+PHASE 2 — ANDROID MOBILE APP (Weeks 3-6)
+----------------------------------------------------------------------
+
+Week 3-4: App Foundation
+  [ ] Android project setup (Kotlin, Jetpack Compose, Material 3)
+  [ ] Navigation setup (Compose Navigation)
+  [ ] Hilt dependency injection
+  [ ] Retrofit + OkHttp client setup
+  [ ] Room database for local storage
+  [ ] Onboarding screens:
+      - Welcome
+      - LLM Provider selection (OpenAI / Ollama / Custom)
+      - API Key input (stored in EncryptedSharedPreferences)
+      - Backend URL configuration
+
+Week 5: Core Features
+  [ ] PDF upload screen (file picker → upload to backend)
+  [ ] Document library (list uploaded books, status)
+  [ ] Chat UI:
+      - Message bubbles (user + AI)
+      - Streaming text display (tokens appearing as they arrive)
+      - Book/source references shown with answers
+      - Input field with send button
+  [ ] Conversation history (stored locally via Room)
+
+Week 6: Polish
+  [ ] Settings screen (change provider, model, API key)
+  [ ] Model selection dropdown (GPT-4o, GPT-4-mini, Llama 3, etc.)
+  [ ] Error handling and offline states
+  [ ] Loading/progress indicators for PDF processing
+  [ ] Dark mode / light mode
+  [ ] App icon and branding
+
+----------------------------------------------------------------------
+PHASE 3 — WEB APP (Weeks 7-10)
+----------------------------------------------------------------------
+
+  [ ] React + TypeScript + Vite project setup
+  [ ] Same backend API — just a different client
+  [ ] Responsive chat interface
+  [ ] PDF upload and library management
+  [ ] Settings and BYOK key management
+  [ ] SSE streaming for chat responses
+  [ ] Mobile-responsive design
+
+----------------------------------------------------------------------
+PHASE 4 — ADVANCED FEATURES (Weeks 10+)
+----------------------------------------------------------------------
+
+  [ ] Self-hosted Ollama integration for fully private/offline mode
+  [ ] Auto-generated quizzes from PDF content
+  [ ] Flashcard generation
+  [ ] Study progress tracking
+  [ ] Multi-user support with authentication
+  [ ] Admin dashboard (usage analytics)
+  [ ] iOS app (Kotlin Multiplatform or native Swift)
+  [ ] Push notifications for study reminders
+
+================================================================================
+5. PROJECT STRUCTURE
+================================================================================
+
+5.1 BACKEND STRUCTURE
+---------------------
+
+ai-tutor-backend/
+├── build.gradle.kts
+├── settings.gradle.kts
+├── docker-compose.yml              (Postgres + pgvector + Ollama)
+├── Dockerfile
+├── src/main/kotlin/com/aitutor/
+│   ├── Application.kt              (Main entry point)
+│   ├── api/
+│   │   ├── routes/                  (ChatRoutes, DocumentRoutes, HealthRoutes)
+│   │   ├── dto/                     (Request/Response data classes)
+│   │   └── middleware/              (Auth, BYOK key extraction, error handling)
+│   ├── ingestion/
+│   │   ├── service/
+│   │   │   ├── PdfExtractionService.kt    (Tika + OCR)
+│   │   │   ├── ChunkingService.kt         (Semantic chunking)
+│   │   │   └── EmbeddingService.kt        (Vector generation)
+│   │   ├── model/
+│   │   │   ├── Document.kt                (DB entity)
+│   │   │   └── Chunk.kt                   (DB entity with vector)
+│   │   └── repository/
+│   │       ├── DocumentRepository.kt
+│   │       └── ChunkRepository.kt
+│   ├── rag/
+│   │   ├── service/
+│   │   │   ├── RetrievalService.kt        (Vector similarity search)
+│   │   │   └── ContextAssembler.kt        (Build prompt context)
+│   │   └── repository/
+│   │       └── VectorRepository.kt        (pgvector queries)
+│   ├── llm/
+│   │   ├── provider/
+│   │   │   ├── LlmProvider.kt             (Interface)
+│   │   │   ├── OpenAiProvider.kt
+│   │   │   ├── OllamaProvider.kt
+│   │   │   └── CustomProvider.kt
+│   │   ├── service/
+│   │   │   └── ChatService.kt             (Orchestrates RAG + LLM)
+│   │   └── config/
+│   │       └── SystemPrompts.kt           (Language-aware prompts)
+│   ├── user/
+│   │   ├── service/UserService.kt
+│   │   ├── model/User.kt
+│   │   └── repository/UserRepository.kt
+│   └── common/
+│       ├── config/
+│       │   ├── DatabaseConfig.kt
+│       │   └── AppConfig.kt
+│       └── util/
+│           └── Extensions.kt
+├── src/main/resources/
+│   ├── application.yml
+│   └── db/migration/                (Flyway SQL files)
+└── src/test/kotlin/com/aitutor/     (Unit & integration tests)
+
+5.2 ANDROID APP STRUCTURE
+--------------------------
+
+ai-tutor-android/
+├── build.gradle.kts
+├── app/
+│   ├── build.gradle.kts
+│   └── src/main/kotlin/com/aitutor/android/
+│       ├── AiTutorApp.kt            (Application class)
+│       ├── MainActivity.kt
+│       ├── di/                       (Hilt modules)
+│       │   ├── NetworkModule.kt
+│       │   └── DatabaseModule.kt
+│       ├── data/
+│       │   ├── remote/
+│       │   │   ├── ApiService.kt     (Retrofit interface)
+│       │   │   └── SseClient.kt      (SSE streaming)
+│       │   ├── local/
+│       │   │   ├── AppDatabase.kt    (Room)
+│       │   │   └── dao/              (ConversationDao, SettingsDao)
+│       │   └── repository/
+│       │       ├── ChatRepository.kt
+│       │       └── DocumentRepository.kt
+│       ├── domain/
+│       │   └── model/                (Domain models)
+│       ├── ui/
+│       │   ├── theme/                (Material 3 theme)
+│       │   ├── navigation/           (NavGraph)
+│       │   ├── onboarding/           (Setup screens)
+│       │   ├── chat/                 (Chat screen + ViewModel)
+│       │   ├── library/              (Document library)
+│       │   └── settings/             (Settings screen)
+│       └── util/
+│           └── SecureStorage.kt      (EncryptedSharedPreferences)
+└── src/main/res/                     (Resources, icons, strings)
+
+================================================================================
+6. DATABASE SCHEMA (PostgreSQL + pgvector)
+================================================================================
+
+-- Enable vector extension
+CREATE EXTENSION IF NOT EXISTS vector;
+
+-- Users table
+CREATE TABLE users (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email           VARCHAR(255),
+    created_at      TIMESTAMP DEFAULT NOW()
+);
+
+-- Uploaded documents (PDFs)
+CREATE TABLE documents (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id         UUID REFERENCES users(id),
+    title           VARCHAR(500),
+    file_name       VARCHAR(500),
+    total_pages     INT,
+    total_chunks    INT,
+    status          VARCHAR(50) DEFAULT 'processing',  -- processing, ready, failed
+    created_at      TIMESTAMP DEFAULT NOW()
+);
+
+-- Document chunks with embeddings
+CREATE TABLE chunks (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    document_id     UUID REFERENCES documents(id) ON DELETE CASCADE,
+    content         TEXT NOT NULL,
+    page_number     INT,
+    chapter         VARCHAR(500),
+    chunk_index     INT,
+    embedding       vector(1536),   -- OpenAI text-embedding-3-small dimension
+    created_at      TIMESTAMP DEFAULT NOW()
+);
+
+-- Index for fast similarity search
+CREATE INDEX chunks_embedding_idx ON chunks
+    USING ivfflat (embedding vector_cosine_ops)
+    WITH (lists = 100);
+
+-- Conversations
+CREATE TABLE conversations (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id         UUID REFERENCES users(id),
+    title           VARCHAR(500),
+    created_at      TIMESTAMP DEFAULT NOW()
+);
+
+-- Chat messages
+CREATE TABLE messages (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    conversation_id UUID REFERENCES conversations(id) ON DELETE CASCADE,
+    role            VARCHAR(20) NOT NULL,  -- 'user', 'assistant', 'system'
+    content         TEXT NOT NULL,
+    sources         JSONB,                 -- referenced chunk IDs + page numbers
+    created_at      TIMESTAMP DEFAULT NOW()
+);
+
+================================================================================
+7. API ENDPOINTS DESIGN
+================================================================================
+
+Base URL: /api/v1
+
+--- Health ---
+GET    /health                          Health check
+
+--- Documents ---
+POST   /documents/upload                Upload PDF (multipart)
+GET    /documents                       List all documents
+GET    /documents/{id}                  Get document details + status
+DELETE /documents/{id}                  Delete document
+
+--- Chat ---
+POST   /chat                            Send message, get SSE streaming response
+  Headers:
+    X-LLM-Provider: openai | ollama | custom
+    X-API-Key: <user's API key>         (for commercial providers)
+    X-Model: gpt-4o | llama3 | etc.
+    X-Base-URL: <custom endpoint>       (for custom/ollama)
+  Body:
+    {
+      "conversation_id": "uuid",        (optional, creates new if null)
+      "message": "user's question",
+      "document_ids": ["uuid1", "uuid2"] (optional, scope to specific books)
+    }
+  Response: SSE stream of tokens
+
+GET    /conversations                   List conversations
+GET    /conversations/{id}/messages     Get conversation messages
+DELETE /conversations/{id}              Delete conversation
+
+--- Models ---
+GET    /models/available                List available models per provider
+
+================================================================================
+8. THOUGHT PROCESS & RATIONALE
+================================================================================
+
+Q: Why not microservices?
+A: Overhead of service mesh, API gateway, container orchestration, distributed
+   tracing is not justified for a new project. Modular monolith gives same code
+   separation with 10x simpler deployment. Can extract later if needed.
+
+Q: Why Kotlin for backend when web will be TypeScript?
+A: (1) Same language as mobile = single team expertise initially
+   (2) JVM has BEST PDF libraries (Tika, PDFBox, Tesseract bindings)
+   (3) Backend language doesn't need to match frontend — they communicate via REST
+   (4) Kotlin coroutines are excellent for async I/O (LLM streaming, embedding calls)
+
+Q: Why pgvector instead of a dedicated vector DB (Qdrant, Weaviate)?
+A: (1) One less service to manage and deploy
+   (2) Your app data (users, documents, conversations) already needs Postgres
+   (3) pgvector handles millions of vectors comfortably
+   (4) Can migrate to dedicated vector DB later if scale demands it
+
+Q: Why BYOK instead of server-managed API keys?
+A: (1) Zero liability for API costs — users pay their own usage
+   (2) No need for billing infrastructure initially
+   (3) Privacy — server never stores keys
+   (4) Users can choose their preferred provider and model
+   (5) Open-source model support means users can run fully free
+
+Q: Why let LLM handle language detection instead of a separate service?
+A: (1) GPT-4o/Llama 3 are excellent at detecting language context
+   (2) Roman Urdu + English code-mixing is extremely hard for rule-based systems
+   (3) Zero additional infrastructure
+   (4) The LLM is already processing the message — no extra latency
+   (5) Simple system prompt instruction is sufficient
+
+Q: Why backend-first development order?
+A: (1) Both mobile and web clients DEPEND on the backend
+   (2) RAG pipeline must work before any UI can be useful
+   (3) Can test entire pipeline via Swagger/Postman
+   (4) Mobile dev can overlap once core APIs are stable
+
+Q: Why Apache Tika instead of just PDFBox?
+A: (1) Tika wraps PDFBox but adds automatic format detection
+   (2) Supports 1000+ document formats (future-proofing)
+   (3) Built-in Tesseract OCR integration for scanned PDFs
+   (4) Higher-level API, less boilerplate code
+
+Q: Why text-embedding-3-small for embeddings?
+A: (1) Supports 90+ languages including Urdu natively
+   (2) Cost-effective ($0.02 per 1M tokens)
+   (3) 1536 dimensions — good balance of accuracy and storage
+   (4) Can be swapped to Ollama embeddings for free/local usage via abstraction
+
+Q: Streaming responses — why SSE instead of WebSockets?
+A: (1) SSE is simpler — HTTP-based, unidirectional (server → client)
+   (2) Perfect for LLM token streaming (one direction)
+   (3) Automatic reconnection built into the protocol
+   (4) Supported by Retrofit/OkHttp on Android
+   (5) WebSockets would be overkill for this use case
+
+================================================================================
+9. RISK MITIGATION
+================================================================================
+
+Risk: Roman Urdu has no standard spelling → RAG retrieval may miss relevant chunks
+Mitigation: Use multilingual embedding models that handle transliteration variants
+
+Risk: Large PDFs may timeout during processing
+Mitigation: Async processing with status polling; background job queue
+
+Risk: Tesseract OCR quality varies for Urdu script
+Mitigation: Allow users to verify/edit extracted text; prioritize text-based PDFs
+
+Risk: Different LLM providers have different response formats
+Mitigation: Strong abstraction layer; normalize all responses to common format
+
+Risk: pgvector may become slow at very large scale (100M+ vectors)
+Mitigation: Use IVFFlat indexing initially; migrate to HNSW index or dedicated
+            vector DB if/when needed
+
+================================================================================
+10. NEXT STEPS (IMMEDIATE)
+================================================================================
+
+1. Set up the Kotlin backend project with Gradle
+2. Set up Docker Compose (PostgreSQL + pgvector)
+3. Create Flyway database migrations
+4. Implement PDF extraction with Apache Tika
+5. Implement chunking service
+6. Set up embedding + pgvector storage
+7. Build the LLM abstraction layer
+8. Create chat API with SSE streaming
+9. Test end-to-end with Swagger/Postman
+10. Start Android app scaffold in parallel
+
+================================================================================
+END OF DOCUMENT
+================================================================================
