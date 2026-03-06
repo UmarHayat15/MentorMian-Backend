@@ -23,6 +23,9 @@ aitutor:
   openai:
     baseUrl: "https://api.openai.com/v1"
     embedModel: "text-embedding-3-small"
+  gemini:
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta"
+    embedModel: "text-embedding-004"
   defaults:
     provider: "openai"
     model: "gpt-4o"

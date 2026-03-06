@@ -71,6 +71,7 @@ dependencies {
 
     // Logging
     implementation("ch.qos.logback:logback-classic:$logback_version")
+    implementation("org.apache.logging.log4j:log4j-to-slf4j:2.24.1")
 
     // OkHttp (for SSE streaming from LLM APIs)
     implementation("com.squareup.okhttp3:okhttp:$okhttp_version")

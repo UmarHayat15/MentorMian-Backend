@@ -23,6 +23,11 @@ data class OpenAiConfig(
     val embedModel: String
 )
 
+data class GeminiConfig(
+    val baseUrl: String,
+    val embedModel: String
+)
+
 data class DefaultsConfig(
     val provider: String,
     val model: String
@@ -50,6 +55,7 @@ data class AppConfig(
     val ollamaBaseUrl: String,
     val ollama: OllamaConfig,
     val openai: OpenAiConfig,
+    val gemini: GeminiConfig,
     val defaults: DefaultsConfig,
     val chunkingMaxTokens: Int,
     val chunkingOverlapPercent: Int,
@@ -92,6 +98,10 @@ fun Application.loadAppConfig(): AppConfig {
         openai = OpenAiConfig(
             baseUrl = resolve("AITUTOR_OPENAI_BASE_URL", "aitutor.openai.baseUrl"),
             embedModel = resolve("AITUTOR_OPENAI_EMBED_MODEL", "aitutor.openai.embedModel")
+        ),
+        gemini = GeminiConfig(
+            baseUrl = resolve("AITUTOR_GEMINI_BASE_URL", "aitutor.gemini.baseUrl"),
+            embedModel = resolve("AITUTOR_GEMINI_EMBED_MODEL", "aitutor.gemini.embedModel")
         ),
         defaults = DefaultsConfig(
             provider = resolve("AITUTOR_DEFAULT_PROVIDER", "aitutor.defaults.provider"),

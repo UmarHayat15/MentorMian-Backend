@@ -22,6 +22,15 @@ class LlmProviderFactory(private val appConfig: AppConfig) {
                     embeddingModel = appConfig.ollama.embedModel
                 )
             }
+            "gemini" -> {
+                val apiKey = llmConfig.apiKey
+                    ?: throw IllegalArgumentException("API key required for Gemini provider")
+                GeminiProvider(
+                    apiKey = apiKey,
+                    baseUrl = llmConfig.baseUrl ?: appConfig.gemini.baseUrl,
+                    embeddingModel = appConfig.gemini.embedModel
+                )
+            }
             "custom" -> {
                 val apiKey = llmConfig.apiKey
                     ?: throw IllegalArgumentException("API key required for custom provider")
