@@ -1,0 +1,226 @@
+================================================================================
+          AI TUTOR APP — API TESTING GUIDE (with Gemini)
+================================================================================
+
+Base URL:  http://localhost:8080/api/v1
+
+Gemini Headers (use these on every request that talks to an LLM):
+  X-LLM-Provider: gemini
+  X-API-Key:      YOUR_GEMINI_API_KEY
+  X-Model:        gemini-2.5-flash
+
+Replace YOUR_GEMINI_API_KEY with your actual Gemini API key.
+For model, you can use: gemini-2.5-flash, gemini-2.5-pro,
+gemini-2.0-flash, etc.
+
+================================================================================
+ 1. HEALTH CHECK
+================================================================================
+
+curl http://localhost:8080/api/v1/health
+
+Expected:
+  {"status":"ok","version":"0.1.0"}
+
+
+================================================================================
+ 2. LIST AVAILABLE MODELS
+================================================================================
+
+curl http://localhost:8080/api/v1/models/available
+
+Expected:
+  JSON list of available models (OpenAI, Ollama models).
+
+
+================================================================================
+ 3. UPLOAD A PDF DOCUMENT
+================================================================================
+
+This endpoint processes the PDF and generates embeddings.
+You MUST provide the Gemini headers so it uses your Gemini API
+for embedding generation.
+
+curl -X POST http://localhost:8080/api/v1/documents/upload \
+  -H "X-LLM-Provider: gemini" \
+  -H "X-API-Key: YOUR_GEMINI_API_KEY" \
+  -H "X-Model: gemini-2.5-flash" \
+  -F "file=@/path/to/your/textbook.pdf" \
+  -F "title=My Textbook"
+
+Expected:
+  {"success":true,"data":{"id":"<document-uuid>","title":"My Textbook",...,"status":"processing"}}
+
+The document processes in the background. Check its status with the next endpoint.
+
+NOTE: Save the document "id" from the response — you'll need it later.
+
+
+================================================================================
+ 4. CHECK DOCUMENT STATUS
+================================================================================
+
+Replace <document-id> with the UUID from step 3.
+
+curl http://localhost:8080/api/v1/documents/<document-id>
+
+Expected (while processing):
+  {"success":true,"data":{"id":"...","status":"processing",...}}
+
+Expected (when done):
+  {"success":true,"data":{"id":"...","status":"ready","totalPages":10,"totalChunks":42,...}}
+
+
+================================================================================
+ 5. LIST ALL DOCUMENTS
+================================================================================
+
+curl http://localhost:8080/api/v1/documents
+
+Expected:
+  {"success":true,"data":{"documents":[...]}}
+
+
+================================================================================
+ 6. CHAT (Streaming with SSE) — THE MAIN ENDPOINT
+================================================================================
+
+This is the core endpoint. It retrieves relevant chunks from your
+uploaded PDFs (RAG) and sends them to Gemini for an answer.
+
+--- 6a. Simple chat (no document scoping) ---
+
+curl -N -X POST http://localhost:8080/api/v1/chat \
+  -H "Content-Type: application/json" \
+  -H "X-LLM-Provider: gemini" \
+  -H "X-API-Key: YOUR_GEMINI_API_KEY" \
+  -H "X-Model: gemini-2.5-flash" \
+  -d '{
+    "message": "Explain Newtons laws in simple Urdu."
+  }'
+
+-N flag tells curl not to buffer the SSE stream.
+
+Expected output (streaming tokens):
+  data: {"conversation_id": "<uuid>"}
+  data: {"token": "نیوٹن"}
+  data: {"token": " کے"}
+  data: {"token": " قوانین"}
+  ...
+  data: [DONE]
+
+
+--- 6b. Chat scoped to a specific document ---
+
+curl -N -X POST http://localhost:8080/api/v1/chat \
+  -H "Content-Type: application/json" \
+  -H "X-LLM-Provider: gemini" \
+  -H "X-API-Key: YOUR_GEMINI_API_KEY" \
+  -H "X-Model: gemini-2.5-flash" \
+  -d '{
+    "message": "Summarize chapter 1",
+    "document_ids": ["<document-id-from-step-3>"]
+  }'
+
+
+--- 6c. Continue an existing conversation ---
+
+Use the conversation_id from a previous chat response:
+
+curl -N -X POST http://localhost:8080/api/v1/chat \
+  -H "Content-Type: application/json" \
+  -H "X-LLM-Provider: gemini" \
+  -H "X-API-Key: YOUR_GEMINI_API_KEY" \
+  -H "X-Model: gemini-2.5-flash" \
+  -d '{
+    "message": "Tell me more about the second law",
+    "conversation_id": "<conversation-id-from-previous-response>"
+  }'
+
+
+================================================================================
+ 7. LIST CONVERSATIONS
+================================================================================
+
+curl http://localhost:8080/api/v1/conversations
+
+Expected:
+  {"success":true,"data":{"conversations":[{"id":"...","title":"...","createdAt":"..."}]}}
+
+
+================================================================================
+ 8. GET MESSAGES IN A CONVERSATION
+================================================================================
+
+Replace <conversation-id> with a real ID from step 7.
+
+curl http://localhost:8080/api/v1/conversations/<conversation-id>/messages
+
+Expected:
+  {"success":true,"data":{"messages":[
+    {"id":"...","role":"user","content":"Explain Newtons laws...","createdAt":"..."},
+    {"id":"...","role":"assistant","content":"...","createdAt":"..."}
+  ]}}
+
+
+================================================================================
+ 9. DELETE A CONVERSATION
+================================================================================
+
+curl -X DELETE http://localhost:8080/api/v1/conversations/<conversation-id>
+
+Expected:
+  {"success":true}
+
+
+================================================================================
+ 10. DELETE A DOCUMENT
+================================================================================
+
+curl -X DELETE http://localhost:8080/api/v1/documents/<document-id>
+
+Expected:
+  {"success":true}
+
+
+================================================================================
+ SUGGESTED TESTING ORDER
+================================================================================
+
+ 1. Health check           → confirm server is running
+ 2. List models            → see what's available
+ 3. Chat (simple)          → test Gemini without any PDF (no RAG context)
+ 4. Upload a PDF           → test document ingestion + Gemini embeddings
+ 5. Check document status  → wait until status is "ready"
+ 6. Chat (scoped to doc)   → ask questions about the uploaded PDF
+ 7. Continue conversation  → test multi-turn chat
+ 8. List conversations     → verify conversations are saved
+ 9. Get messages           → verify message history
+10. Clean up               → delete conversations and documents
+
+
+================================================================================
+ TROUBLESHOOTING
+================================================================================
+
+Error: "API key required for Gemini provider"
+  → You forgot the X-API-Key header.
+
+Error: "Gemini chat failed (400): unexpected model name format"
+  → The model name is wrong. Use full names like "gemini-2.5-flash"
+    or "gemini-2.5-pro" (not just "flash" or "2.0").
+
+Error: "Gemini chat failed (429): quota exceeded"
+  → Your Gemini API key has hit its rate limit. Wait and retry,
+    or check your billing at https://ai.google.dev/
+
+Error: "Gemini chat failed (404): model not available"
+  → That model may be deprecated. Try "gemini-2.5-flash" instead.
+
+Error: Document stays in "processing" status
+  → Check the server terminal logs for embedding errors.
+    The PDF processing happens in the background.
+
+================================================================================
+ END OF TESTING GUIDE
+================================================================================

@@ -36,20 +36,29 @@ class GeminiProvider(
     }
 
     /**
-     * Build the Gemini "contents" array from a list of ChatMessages.
+     * Build the Gemini "contents" array from ChatMessages.
+     * Filters out "system" role messages (handled separately via systemInstruction).
      * Gemini uses "user" and "model" roles (not "assistant").
-     * System messages are mapped to "user" role since Gemini handles
-     * system instructions differently.
+     * Also ensures proper alternation — merges consecutive same-role messages.
      */
     private fun buildContentsJson(messages: List<ChatMessage>): JsonArray {
+        // Filter out system messages and merge consecutive same-role messages
+        val filtered = messages.filter { it.role != "system" }
+        val merged = mutableListOf<ChatMessage>()
+        for (msg in filtered) {
+            val role = if (msg.role == "assistant") "model" else msg.role
+            val last = merged.lastOrNull()
+            if (last != null && last.role == role) {
+                merged[merged.size - 1] = ChatMessage(role = role, content = last.content + "\n\n" + msg.content)
+            } else {
+                merged.add(ChatMessage(role = role, content = msg.content))
+            }
+        }
+
         return buildJsonArray {
-            messages.forEach { msg ->
+            merged.forEach { msg ->
                 addJsonObject {
-                    put("role", when (msg.role) {
-                        "assistant" -> "model"
-                        "system" -> "user"
-                        else -> msg.role
-                    })
+                    put("role", msg.role)
                     put("parts", buildJsonArray {
                         addJsonObject {
                             put("text", msg.content)
@@ -60,10 +69,37 @@ class GeminiProvider(
         }
     }
 
-    override suspend fun chatStream(messages: List<ChatMessage>, model: String): Flow<String> = flow {
-        val requestBody = buildJsonObject {
+    /**
+     * Extract system instruction from message list for Gemini's systemInstruction field.
+     */
+    private fun buildSystemInstruction(messages: List<ChatMessage>): JsonObject? {
+        val systemMessages = messages.filter { it.role == "system" }
+        if (systemMessages.isEmpty()) return null
+        val combined = systemMessages.joinToString("\n\n") { it.content }
+        return buildJsonObject {
+            put("parts", buildJsonArray {
+                addJsonObject {
+                    put("text", combined)
+                }
+            })
+        }
+    }
+
+    /**
+     * Build the full request body with optional systemInstruction.
+     */
+    private fun buildRequestBody(messages: List<ChatMessage>): JsonObject {
+        return buildJsonObject {
+            val sysInstruction = buildSystemInstruction(messages)
+            if (sysInstruction != null) {
+                put("systemInstruction", sysInstruction)
+            }
             put("contents", buildContentsJson(messages))
         }
+    }
+
+    override suspend fun chatStream(messages: List<ChatMessage>, model: String): Flow<String> = flow {
+        val requestBody = buildRequestBody(messages)
 
         val response: HttpResponse = client.post(
             "$baseUrl/models/$model:streamGenerateContent?alt=sse&key=$apiKey"
@@ -105,9 +141,7 @@ class GeminiProvider(
     }
 
     override suspend fun chat(messages: List<ChatMessage>, model: String): String {
-        val requestBody = buildJsonObject {
-            put("contents", buildContentsJson(messages))
-        }
+        val requestBody = buildRequestBody(messages)
 
         val response: HttpResponse = client.post(
             "$baseUrl/models/$model:generateContent?key=$apiKey"

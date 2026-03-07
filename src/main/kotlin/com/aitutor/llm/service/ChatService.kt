@@ -39,6 +39,9 @@ class ChatService(
         val provider = providerFactory.create(llmConfig)
         val activeConversationId = conversationId ?: createConversation(userMessage)
 
+        // Fetch history BEFORE saving the new message so it doesn't appear twice
+        val history = getConversationHistory(activeConversationId)
+
         saveMessage(activeConversationId, "user", userMessage, null)
 
         val retrievalResult = retrievalService.retrieve(
@@ -56,7 +59,6 @@ class ChatService(
             )
         }
 
-        val history = getConversationHistory(activeConversationId)
         val messages = buildMessageList(history, retrievalResult.context, userMessage)
 
         val responseBuilder = StringBuilder()
