@@ -1,0 +1,12 @@
+/* ============================================================
+   App.css — Layout-specific overrides (minimal)
+   ============================================================ */
+
+.app-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  color: var(--text-tertiary);
+  font-size: var(--font-size-lg);
+}
